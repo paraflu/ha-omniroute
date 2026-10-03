@@ -1,0 +1,12 @@
+{
+  "domain": "omniroute",
+  "name": "OmniRoute",
+  "documentation": "https://github.com/nousresearch/hermes-agent",
+  "dependencies": [],
+  "codeowners": [
+    "@nousresearch"
+  ],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "version": "0.1.0"
+}
