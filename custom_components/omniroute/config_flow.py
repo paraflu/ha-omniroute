@@ -62,31 +62,35 @@ class OmniRouteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         """Provide reconfiguration for an existing entry."""
-        return OmniRouteOptionsFlow(config_entry)
+        return OmniRouteOptionsFlow()
 
 
 class OmniRouteOptionsFlow(config_entries.OptionsFlow):
     """Allow updating the URL and API key without removing the entry."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
-
     async def async_step_init(self, user_input: dict | None = None):
         """Update connection settings."""
         if user_input is not None:
             try:
-                url = _valid_base_url(user_input[CONF_URL])
+                validated = STEP_USER_DATA_SCHEMA(user_input)
+                url = _valid_base_url(validated[CONF_URL])
             except (vol.Invalid, KeyError):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=STEP_USER_DATA_SCHEMA,
                     errors={"base": "invalid_url"},
                 )
+            if any(e.entry_id != self.config_entry.entry_id and e.data.get(CONF_URL, e.data.get("host")) == url
+                   for e in self.hass.config_entries.async_entries(DOMAIN)):
+                return self.async_show_form(step_id="init", data_schema=STEP_USER_DATA_SCHEMA,
+                                            errors={"base": "already_configured"})
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
-                data={CONF_URL: url, CONF_API_KEY: user_input[CONF_API_KEY].strip()},
+                data={CONF_URL: url, CONF_API_KEY: validated[CONF_API_KEY].strip()},
                 title=url,
+                unique_id=url,
             )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
         return self.async_show_form(

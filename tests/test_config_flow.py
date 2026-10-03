@@ -78,5 +78,6 @@ async def test_coordinator_defensive_parsing(hass):
         health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
         quota = AsyncMock(); quota.status = 200; quota.json.return_value = {"invalid": "format"}; quota.__aenter__.return_value = quota
         mock_get.side_effect = [health, quota]
-        data = await coordinator._async_update_data()
-        assert data["quotas"] == {}
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()

@@ -1,66 +1,53 @@
+"""Poll OmniRoute health and account quotas."""
+import asyncio
 import logging
-import aiohttp
 from datetime import timedelta
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+import aiohttp
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
 class OmniRouteDataCoordinator(DataUpdateCoordinator):
-    """Coordinator for OmniRoute API data."""
-
     def __init__(self, hass, host, api_key, config_entry=None):
         self.host = host.rstrip("/")
         self.api_key = api_key
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="OmniRoute",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
-            config_entry=config_entry,
-        )
+        super().__init__(hass, _LOGGER, name="OmniRoute", config_entry=config_entry,
+                         update_interval=timedelta(seconds=UPDATE_INTERVAL))
 
     async def _async_update_data(self):
-        """Fetch data from API."""
-        data = {"health": "unknown", "quotas": {}}
-        
-        async with aiohttp.ClientSession() as session:
-            # 1. Health check (Public)
-            try:
+        data = {"health": "unknown", "quotas": {}, "accounts": {}}
+        try:
+            async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.host}/api/health", timeout=10) as resp:
-                    if resp.status == 200:
-                        data["health"] = "healthy"
-                    else:
-                        data["health"] = f"unhealthy ({resp.status})"
-            except Exception as e:
-                _LOGGER.error("OmniRoute health check failed: %s", e)
-                data["health"] = "unavailable"
-
-            # 2. Quota (Authenticated)
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            try:
-                async with session.get(f"{self.host}/api/usage/quota", headers=headers, timeout=10) as resp:
-                    if resp.status == 200:
-                        payload = await resp.json()
-                        providers = payload.get("providers")
-                        if isinstance(providers, dict):
-                            for p_name, p_data in providers.items():
-                                val = p_data.get("quota", "unknown")
-                                data["quotas"][p_name] = val
-                        else:
-                            _LOGGER.warning("OmniRoute quota payload has unexpected format: %s", payload)
-                    elif resp.status == 403:
-                        raise ConfigEntryAuthFailed("Invalid API Key or insufficient permissions for usage endpoints")
-                    elif resp.status == 401:
-                        raise ConfigEntryAuthFailed("Authentication failed: Unauthorized")
-                    else:
-                        _LOGGER.error("OmniRoute quota API returned error %s", resp.status)
-            except aiohttp.ClientError as e:
-                _LOGGER.error("OmniRoute quota request failed: %s", e)
-            except ConfigEntryAuthFailed:
-                raise
-            except Exception as e:
-                _LOGGER.error("Unexpected error fetching OmniRoute quota: %s", e)
-
+                    if resp.status != 200:
+                        raise UpdateFailed(f"Health endpoint HTTP {resp.status}")
+                    data["health"] = "healthy"
+                async with session.get(f"{self.host}/api/usage/quota", headers={"Authorization": f"Bearer {self.api_key}"}, timeout=10) as resp:
+                    if resp.status in (401, 403):
+                        raise ConfigEntryAuthFailed("API key rejected or missing usage permissions")
+                    if resp.status != 200:
+                        raise UpdateFailed(f"Quota endpoint HTTP {resp.status}")
+                    payload = await resp.json()
+                providers = payload.get("providers") if isinstance(payload, dict) else None
+                if isinstance(providers, list):
+                    for account in providers:
+                        if not isinstance(account, dict) or not account.get("connectionId"):
+                            raise UpdateFailed("Invalid quota account schema")
+                        key = account["connectionId"]
+                        remaining = account.get("percentRemaining")
+                        if remaining is not None and (isinstance(remaining, bool) or not isinstance(remaining, (int, float))):
+                            raise UpdateFailed("Invalid remaining percentage")
+                        data["quotas"][key] = remaining
+                        data["accounts"][key] = {k: account.get(k) for k in ("provider", "name", "quotaUsed", "quotaTotal", "resetAt", "tokenStatus")}
+                elif isinstance(providers, dict):
+                    for key, account in providers.items():
+                        if not isinstance(account, dict):
+                            raise UpdateFailed("Invalid legacy quota schema")
+                        data["quotas"][key] = account.get("quota")
+                else:
+                    raise UpdateFailed("Unexpected quota schema (providers must be list or object)")
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+            raise UpdateFailed("OmniRoute request or JSON decoding failed") from err
         return data
