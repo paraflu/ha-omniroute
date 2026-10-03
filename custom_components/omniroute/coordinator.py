@@ -15,7 +15,7 @@ class OmniRouteDataCoordinator(DataUpdateCoordinator):
         self.api_key = api_key
         super().__init__(
             hass,
-            _LOGGER.name,
+            _LOGGER,
             name="OmniRoute",
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
             config_entry=config_entry,
