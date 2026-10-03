@@ -18,15 +18,8 @@ class OmniRouteDataCoordinator(DataUpdateCoordinator):
             _LOGGER.name,
             name="OmniRoute",
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
-            # Pass config_entry to avoid "Frame helper not set up" RuntimeError in some HA versions/tests
-            # though typically it's optional. In this environment's HA version, it seems to be triggering usage reports.
+            config_entry=config_entry,
         )
-        # In some HA versions, the coordinator needs a reference to the config entry for reporting.
-        # We can manually assign it if needed, but the super().__init__ typically handles it.
-        # Let's try to avoid the trigger by ensuring we are in a proper HA context or just ignoring the warning.
-        # But the test failed with RuntimeError: Frame helper not set up.
-        # This is often because the coordinator is initialized outside of a real HA setup.
-        # To fix the test, we can mock the frame helper or just pass a dummy config entry if required.
 
     async def _async_update_data(self):
         """Fetch data from API."""

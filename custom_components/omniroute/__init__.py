@@ -9,9 +9,10 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OmniRoute from a config entry."""
     coordinator = OmniRouteDataCoordinator(
-        hass, 
-        entry.data.get("host"), 
-        entry.data.get("api_key")
+        hass,
+        entry.data.get("url", entry.data.get("host")),
+        entry.data.get("api_key"),
+        config_entry=entry,
     )
     
     try:

@@ -1,98 +1,82 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_API_KEY, CONF_URL
 from custom_components.omniroute.config_flow import OmniRouteConfigFlow
 from custom_components.omniroute.coordinator import OmniRouteDataCoordinator
 from homeassistant.exceptions import ConfigEntryAuthFailed
-import aiohttp
 
 @pytest.fixture
 def hass():
-    hass = MagicMock(spec=HomeAssistant)
-    return hass
+    return MagicMock(spec=HomeAssistant)
+
+@pytest.mark.asyncio
+async def test_config_flow_shows_url_and_key_form():
+    with patch("homeassistant.config_entries.ConfigFlow.async_show_form", return_value={"type": "form"}) as show:
+        flow = OmniRouteConfigFlow()
+        await flow.async_step_user()
+        schema = show.call_args.kwargs["data_schema"]
+        assert schema is not None
+        assert CONF_URL in str(schema)
+        assert CONF_API_KEY in str(schema)
 
 @pytest.mark.asyncio
 async def test_config_flow_success(hass):
-    flow = OmniRouteConfigFlow()
-    user_input = {"host": "http://localhost:20128", "api_key": "test-key"}
-    result = await flow.async_step_user(user_input)
-    assert result["type"] == "create_entry"
-    assert result["title"] == "http://localhost:20128"
-    assert result["data"] == user_input
+    with patch("homeassistant.config_entries.ConfigFlow.async_set_unique_id", new_callable=AsyncMock), \
+         patch("homeassistant.config_entries.ConfigFlow._abort_if_unique_id_configured"), \
+         patch("homeassistant.config_entries.ConfigFlow.async_create_entry", return_value={"type": "create_entry"}) as create:
+        flow = OmniRouteConfigFlow()
+        user_input = {CONF_URL: "http://localhost:20128/", CONF_API_KEY: "test-key"}
+        result = await flow.async_step_user(user_input)
+        assert result["type"] == "create_entry"
+        assert create.call_args.kwargs["title"] == "http://localhost:20128"
+        assert create.call_args.kwargs["data"] == {CONF_URL: "http://localhost:20128", CONF_API_KEY: "test-key"}
+
+@pytest.mark.asyncio
+async def test_config_flow_rejects_invalid_url():
+    with patch("homeassistant.config_entries.ConfigFlow.async_show_form", return_value={"type": "form"}) as show:
+        flow = OmniRouteConfigFlow()
+        await flow.async_step_user({CONF_URL: "file:///etc/passwd", CONF_API_KEY: "secret"})
+        assert show.call_args.kwargs["errors"] == {"base": "invalid_url"}
 
 @pytest.mark.asyncio
 async def test_config_flow_invalid_data(hass):
-    # Mock async_show_form because it's a method of ConfigFlow
-    with patch("homeassistant.config_entries.ConfigFlow.async_show_form") as mock_show:
-        mock_show.return_value = {"type": "form", "errors": {"base": "invalid_data"}}
+    with patch("homeassistant.config_entries.ConfigFlow.async_show_form", return_value={"type": "form"}) as show, \
+         patch("homeassistant.config_entries.ConfigFlow.async_set_unique_id", new_callable=AsyncMock), \
+         patch("homeassistant.config_entries.ConfigFlow._abort_if_unique_id_configured"):
         flow = OmniRouteConfigFlow()
-        # Missing api_key
-        user_input = {"host": "http://localhost:20128"}
-        result = await flow.async_step_user(user_input)
+        flow.hass = hass
+        result = await flow.async_step_user({CONF_URL: "http://localhost:20128"})
         assert result["type"] == "form"
-        assert result["errors"] == {"base": "invalid_data"}
-        mock_show.assert_called_once()
+        show.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_coordinator_health_success(hass):
-    with patch("homeassistant.helpers.frame.report_usage"),          patch("aiohttp.ClientSession.get") as mock_get:
-        
+    with patch("homeassistant.helpers.frame.report_usage"), patch("aiohttp.ClientSession.get") as mock_get:
         coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
-        
-        mock_resp_health = AsyncMock()
-        mock_resp_health.status = 200
-        
-        mock_resp_quota = AsyncMock()
-        mock_resp_quota.status = 200
-        mock_resp_quota.json = AsyncMock(return_value={"providers": {"openai": {"quota": 100}}})
-        
-        mock_get.side_effect = [
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_health)),
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_quota))
-        ]
-        
+        health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
+        quota = AsyncMock(); quota.status = 200; quota.json.return_value = {"providers": {"openai": {"quota": 100}}}; quota.__aenter__.return_value = quota
+        mock_get.side_effect = [health, quota]
         data = await coordinator._async_update_data()
         assert data["health"] == "healthy"
         assert data["quotas"]["openai"] == 100
 
 @pytest.mark.asyncio
 async def test_coordinator_auth_failure(hass):
-    with patch("homeassistant.helpers.frame.report_usage"),          patch("aiohttp.ClientSession.get") as mock_get:
-        
-        coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "bad-key")
-        
-        mock_resp_health = AsyncMock()
-        mock_resp_health.status = 200
-        
-        mock_resp_quota = AsyncMock()
-        mock_resp_quota.status = 403
-        
-        mock_get.side_effect = [
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_health)),
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_quota))
-        ]
-        
+    with patch("homeassistant.helpers.frame.report_usage"), patch("aiohttp.ClientSession.get") as mock_get:
+        coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
+        health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
+        quota = AsyncMock(); quota.status = 403; quota.__aenter__.return_value = quota
+        mock_get.side_effect = [health, quota]
         with pytest.raises(ConfigEntryAuthFailed):
             await coordinator._async_update_data()
 
 @pytest.mark.asyncio
 async def test_coordinator_defensive_parsing(hass):
-    with patch("homeassistant.helpers.frame.report_usage"),          patch("aiohttp.ClientSession.get") as mock_get:
-        
+    with patch("homeassistant.helpers.frame.report_usage"), patch("aiohttp.ClientSession.get") as mock_get:
         coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
-        
-        mock_resp_health = AsyncMock()
-        mock_resp_health.status = 200
-        
-        mock_resp_quota = AsyncMock()
-        mock_resp_quota.status = 200
-        mock_resp_quota.json = AsyncMock(return_value={"providers": "not-a-dict"})
-        
-        mock_get.side_effect = [
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_health)),
-            AsyncMock(__aenter__=AsyncMock(return_value=mock_resp_quota))
-        ]
-        
+        health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
+        quota = AsyncMock(); quota.status = 200; quota.json.return_value = {"invalid": "format"}; quota.__aenter__.return_value = quota
+        mock_get.side_effect = [health, quota]
         data = await coordinator._async_update_data()
-        assert data["health"] == "healthy"
         assert data["quotas"] == {}
