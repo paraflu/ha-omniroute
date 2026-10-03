@@ -48,7 +48,7 @@ async def test_real_quota_list_keeps_accounts_and_attributes():
     health = AsyncMock(); health.status=200; health.__aenter__.return_value=health
     quota = AsyncMock(); quota.status=200; quota.__aenter__.return_value=quota
     quota.json.return_value={'providers':[{'connectionId':'a','provider':'codex','name':'one','percentRemaining':37,'quotaTotal':None,'tokenStatus':'valid'}, {'connectionId':'b','provider':'codex','name':'two','percentRemaining':62}]}
-    with patch('aiohttp.ClientSession.get', side_effect=[health,quota]):
+    with patch('aiohttp.ClientSession.get', side_effect=[health,quota,health,health]):
         c=OmniRouteDataCoordinator(hass,'https://example.org','test')
         data=await c._async_update_data()
     assert data['quotas']=={'a':37,'b':62}
@@ -59,7 +59,7 @@ async def test_real_quota_list_keeps_accounts_and_attributes():
 async def test_http_failure_is_update_failed():
     health=AsyncMock(); health.status=200; health.__aenter__.return_value=health
     quota=AsyncMock(); quota.status=503; quota.__aenter__.return_value=quota
-    with patch('aiohttp.ClientSession.get', side_effect=[health,quota]):
+    with patch('aiohttp.ClientSession.get', side_effect=[health,quota,health,health]):
         c=OmniRouteDataCoordinator(MagicMock(),'https://example.org','test')
         with pytest.raises(UpdateFailed): await c._async_update_data()
 

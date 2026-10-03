@@ -50,4 +50,17 @@ class OmniRouteDataCoordinator(DataUpdateCoordinator):
                     raise UpdateFailed("Unexpected quota schema (providers must be list or object)")
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
             raise UpdateFailed("OmniRoute request or JSON decoding failed") from err
+        from .monitoring import parse_monitoring
+        version, limits = {}, {}
+        # Optional monitoring routes must not break existing health/quota sensors.
+        async with aiohttp.ClientSession() as session:
+            for path, target in (("/api/system/version", version), ("/api/usage/provider-limits", limits)):
+                try:
+                    async with session.get(f"{self.host}{path}", headers={"Authorization": f"Bearer {self.api_key}"}, timeout=10) as resp:
+                        if resp.status == 200:
+                            payload = await resp.json()
+                            if isinstance(payload, dict): target.update(payload)
+                except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                    _LOGGER.debug("Optional monitoring endpoint unavailable: %s", path)
+        data.update(parse_monitoring(version, limits, data['accounts']))
         return data

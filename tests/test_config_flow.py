@@ -56,7 +56,7 @@ async def test_coordinator_health_success(hass):
         coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
         health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
         quota = AsyncMock(); quota.status = 200; quota.json.return_value = {"providers": {"openai": {"quota": 100}}}; quota.__aenter__.return_value = quota
-        mock_get.side_effect = [health, quota]
+        mock_get.side_effect = [health, quota, health, health]
         data = await coordinator._async_update_data()
         assert data["health"] == "healthy"
         assert data["quotas"]["openai"] == 100
@@ -67,7 +67,7 @@ async def test_coordinator_auth_failure(hass):
         coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
         health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
         quota = AsyncMock(); quota.status = 403; quota.__aenter__.return_value = quota
-        mock_get.side_effect = [health, quota]
+        mock_get.side_effect = [health, quota, health, health]
         with pytest.raises(ConfigEntryAuthFailed):
             await coordinator._async_update_data()
 
@@ -77,7 +77,7 @@ async def test_coordinator_defensive_parsing(hass):
         coordinator = OmniRouteDataCoordinator(hass, "http://localhost:20128", "test-key")
         health = AsyncMock(); health.status = 200; health.__aenter__.return_value = health
         quota = AsyncMock(); quota.status = 200; quota.json.return_value = {"invalid": "format"}; quota.__aenter__.return_value = quota
-        mock_get.side_effect = [health, quota]
+        mock_get.side_effect = [health, quota, health, health]
         from homeassistant.helpers.update_coordinator import UpdateFailed
         with pytest.raises(UpdateFailed):
             await coordinator._async_update_data()
