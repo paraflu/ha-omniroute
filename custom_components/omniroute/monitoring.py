@@ -6,13 +6,22 @@ def parse_monitoring(version, limits, accounts):
     known = isinstance(latest, str) and latest not in ('', 'unavailable', 'unknown')
     result = {'version':version.get('current'), 'latest_version':latest if known else None,
               'update_available':version.get('updateAvailable') if known and isinstance(version.get('updateAvailable'), bool) else None,
-              'codex_5h':{}}
+              'codex_5h':{}, 'codex_weekly':{}}
     caches = limits.get('caches', {})
     for key, account in accounts.items():
         if account.get('provider') != 'codex':
             continue
         cache=caches.get(key) or {}
         windows=cache.get('quotas') or {}
+        weekly=next((w for w in windows.values() if isinstance(w,dict) and w.get('windowSeconds')==604800), {})
+        remaining, total = weekly.get('remaining'), weekly.get('total')
+        percent = None
+        if isinstance(remaining,(int,float)) and not isinstance(remaining,bool) and isinstance(total,(int,float)) and not isinstance(total,bool) and total>0:
+            calculated=100*remaining/total
+            if math.isfinite(calculated) and 0<=calculated<=100:
+                percent=round(calculated,2)
+        result['codex_weekly'][key]={'remaining_percent':percent,'reset_at':weekly.get('resetAt'),
+                                     'fetched_at':cache.get('fetchedAt'),'window_seconds':604800}
         window=next((w for w in windows.values() if isinstance(w,dict) and w.get('windowSeconds')==18000), None)
         if window is None:
             continue

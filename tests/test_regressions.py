@@ -76,7 +76,7 @@ async def test_sensor_discovery_updates_and_instance_ids():
     from custom_components.omniroute.sensor import async_setup_entry as setup_sensors, OmniRouteQuotaSensor
     c = MagicMock()
     c.config_entry = SimpleNamespace(entry_id='first')
-    c.data = {'health':'healthy', 'quotas':{'a':37}, 'accounts':{'a':{'provider':'codex'}}}
+    c.data = {'health':'healthy', 'quotas':{'a':37}, 'accounts':{'a':{'provider':'openai'}}}
     c.last_update_success = True
     c.async_add_listener = MagicMock(return_value=lambda: None)
     entry = MagicMock(); entry.entry_id='first'

@@ -1,0 +1,44 @@
+# Replace both placeholder entity IDs with your own Codex Usage 5h sensors.
+# Native Home Assistant cards only; no custom frontend dependencies.
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Codex — 5-hour usage
+    icon: mdi:robot
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: gauge
+        entity: sensor.your_codex_account_a_usage_5h
+        name: Account A · 5 hours
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 0
+          yellow: 70
+          red: 90
+      - type: gauge
+        entity: sensor.your_codex_account_b_usage_5h
+        name: Account B · 5 hours
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 0
+          yellow: 70
+          red: 90
+  - type: markdown
+    content: |
+      Percentage **used** in the 5-hour window.
+
+      {% for label, entity in [('Account A', 'sensor.your_codex_account_a_usage_5h'), ('Account B', 'sensor.your_codex_account_b_usage_5h')] %}
+      {% set reset = as_datetime(state_attr(entity, 'reset_at'), none) %}
+      {% set fetched = as_datetime(state_attr(entity, 'fetched_at'), none) %}
+      **{{ label }}** — reset: {{ as_local(reset).strftime('%d/%m %H:%M') if reset else 'unknown' }}
+
+      Last upstream reading: {{ as_local(fetched).strftime('%d/%m %H:%M') if fetched else 'unknown' }}
+
+      {% endfor %}
+      _Readings come from the OmniRoute cache, not a forced upstream refresh._

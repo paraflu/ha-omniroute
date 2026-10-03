@@ -97,6 +97,23 @@ The form validates the URL format; connection and authorization are checked duri
 
 Open the OmniRoute entry under **Settings → Devices & services** and choose **Configure** (Options). Enter the URL and key again, then save. The entry reloads with the new settings; you do not need to delete it.
 
+## Dashboard preview
+
+![Codex 5-hour usage dashboard with anonymized accounts A and B](docs/images/codex-usage-example.png)
+
+Real Home Assistant example, with personal names replaced by **A** and **B**. The screenshot uses Italian labels; the ready-to-use card below uses English labels.
+
+### Two-account Codex gauge card
+
+Download or copy [`examples/codex-usage-card.yaml`](examples/codex-usage-card.yaml). It uses native Home Assistant cards and displays two usage gauges, local reset times, and the timestamp of each upstream reading.
+
+1. Open your dashboard and select **Edit dashboard → Add card → Manual**.
+2. Paste the contents of the example YAML file.
+3. Replace **every occurrence** of `sensor.your_codex_account_a_usage_5h` and `sensor.your_codex_account_b_usage_5h` with your actual entity IDs, including those in the Markdown template.
+4. Change the account labels if desired and save.
+
+The gauge colors indicate used allowance: green below 70%, yellow from 70%, red from 90%. They are display thresholds, not provider-imposed limits.
+
 ## Add a dashboard card
 
 Edit your dashboard, add a **Manual** card, and use an Entities card like this:
@@ -180,9 +197,14 @@ To remove the integration, delete its entry under **Settings → Devices & servi
 
 ## Development and support
 
-Run the tests in a Python environment with Home Assistant, `pytest`, and `pytest-asyncio` installed:
+The GitHub Actions workflow in [`.github/workflows/tests.yml`](.github/workflows/tests.yml) runs on pushes, pull requests, and manual dispatches. It installs the pinned test baseline, runs pytest, and compiles the integration.
+
+Reproduce the same test environment locally with Python 3.13:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-test.txt
 python -m pytest -q
 ```
 

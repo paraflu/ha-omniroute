@@ -43,10 +43,20 @@ class OmniRouteQuotaSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{coordinator.config_entry.entry_id}_quota_{provider_name}"
     @property
     def native_value(self):
+        account = self.coordinator.data.get('accounts', {}).get(self.provider_name, {})
+        if account.get('provider') == 'codex':
+            return self.coordinator.data.get('codex_weekly', {}).get(self.provider_name, {}).get('remaining_percent')
         return self.coordinator.data.get("quotas", {}).get(self.provider_name)
     @property
     def extra_state_attributes(self):
-        return self.coordinator.data.get("accounts", {}).get(self.provider_name, {})
+        account = dict(self.coordinator.data.get("accounts", {}).get(self.provider_name, {}))
+        if account.get('provider') == 'codex':
+            # Generic endpoint fields are fallback values, not upstream quota.
+            for key in ('quotaUsed', 'quotaTotal', 'resetAt'):
+                account.pop(key, None)
+            account.update(self.coordinator.data.get('codex_weekly', {}).get(self.provider_name, {}))
+            account['quota_window'] = 'weekly'
+        return account
     @property
     def available(self):
         return super().available and self.provider_name in self.coordinator.data.get("quotas", {})
