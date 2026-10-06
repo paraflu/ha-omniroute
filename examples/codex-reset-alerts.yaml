@@ -1,0 +1,23 @@
+# Replace notify.mobile_app_your_phone before enabling.
+- id: omniroute_codex_reset_phone_alerts
+  alias: Codex reset announcement and declared completion
+  mode: queued
+  triggers:
+    - trigger: event
+      event_type: omniroute_codex_reset
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.event.data.phase in ['announced', 'declared_completed'] }}"
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        title: >-
+          {% if trigger.event.data.phase == 'announced' %}
+            Codex reset announced
+          {% else %}
+            Codex reset declared completed (not account-verified)
+          {% endif %}
+        message: >-
+          {{ trigger.event.data.message }}
+          Source: {{ trigger.event.data.source_url }}
+          This third-party report does not confirm your account quota.

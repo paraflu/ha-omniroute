@@ -1,6 +1,18 @@
 # OmniRoute for Home Assistant
 
-Bring your OmniRoute gateway into Home Assistant: monitor availability, provider-account quotas, installed version, and **Codex usage in the 5-hour window** — all from your dashboard.
+**Source version: 0.2.0** — includes optional Codex reset announcement/completion alerts with configurable polling. This feature is currently on the feature branch/PR, not yet merged into `main` or published as a HACS release.
+
+Bring your OmniRoute gateway into Home Assistant: monitor availability, provider-account quotas, installed version, and **Codex usage in the 5-hour window** — all from your dashboard. Optionally receive **Codex reset announcements and declared-completion alerts** from a public third-party tracker.
+
+### What's new in 0.2.0
+
+- Opt-in reset monitoring with separate announcement, declared-completion and tracker-verification events.
+- Home Assistant persistent notifications and an [automation example](examples/codex-reset-alerts.yaml) for phone alerts.
+- Configurable polling: **1–60 minutes**, default **5**; one shared monitor uses the shortest enabled interval.
+- Persistent deduplication and a silent initial baseline: no historical notification flood.
+- No OmniRoute credentials sent to the tracker. Global reset reports do not prove a reset reached your account.
+
+See [configuration instructions](#optional-codex-reset-alerts).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Custom integration](https://img.shields.io/badge/Home%20Assistant-Custom%20integration-41BDF5.svg)](https://www.home-assistant.io/)
@@ -8,6 +20,8 @@ Bring your OmniRoute gateway into Home Assistant: monitor availability, provider
 **UI configuration · HACS custom repository · Multiple accounts · Local polling**
 
 > This is a community-maintained custom integration, not an official Home Assistant or OmniRoute integration. It monitors your gateway; it does not install OmniRoute, run AI requests, or install gateway updates.
+>
+> This project is not endorsed or independently audited by the OmniRoute maintainers. Repository availability, a community discussion, and passing tests are not a security review or a guarantee of compatibility.
 
 ## What you get
 
@@ -28,7 +42,7 @@ Accounts are identified by their connection ID, so multiple accounts from the sa
 
 - A running Home Assistant installation with access to its configuration directory if installing manually.
 - A running OmniRoute instance reachable **from Home Assistant**, not just from your browser.
-- An OmniRoute API key permitted to read the usage endpoints. A key that works for inference may still return **403** for usage monitoring.
+- An **OmniRoute API key**, not an OpenAI/Codex key or a Home Assistant token. Create a **dedicated key for this integration** with the narrowest permissions that cover the endpoints listed below; do not use your main gateway key. A key that works for inference may still return **403** for usage monitoring.
 - [HACS](https://www.hacs.xyz/docs/use/download/download/) for the HACS installation method; manual installation does not require HACS.
 
 The integration has been exercised against OmniRoute **3.8.51**. Endpoint availability and response formats may differ in other versions. A minimum Home Assistant version has not yet been established by a compatibility matrix; use an up-to-date Home Assistant Core.
@@ -97,6 +111,76 @@ The form validates the URL format; connection and authorization are checked duri
 
 Open the OmniRoute entry under **Settings → Devices & services** and choose **Configure** (Options). Enter the URL and key again, then save. The entry reloads with the new settings; you do not need to delete it.
 
+## Optional Codex reset alerts
+
+Added in integration **0.2.0** (source version; not a published release).
+
+### Configure alerts in Home Assistant
+
+1. Open **Settings → Devices & services → OmniRoute** and select your gateway entry.
+2. Choose **Configure** (Options).
+3. Confirm the gateway **URL** and re-enter its **API key**. The current Options form
+   requires the key again even when you only change reset-alert settings; it is not
+   prefilled. This key remains for gateway requests, never for the public tracker.
+4. Enable **Monitor external Codex reset tracker (opt-in)**. It is **off by default**.
+5. Set **Create persistent notifications for announcements and declared completion**:
+   enabled creates Home Assistant persistent notifications; disabled leaves bus events
+   available for your own automations. This boolean defaults to **enabled**.
+6. Set **Reset tracker polling interval (minutes, 1–60)** to a whole number from
+   **1 to 60**, inclusive. The default is **5 minutes**, including existing entries
+   without this setting. Booleans, fractional values and out-of-range values are rejected.
+7. Save. Gateway or opt-in changes reload the entry; interval/notification-only
+   changes update the active monitor without a reload or extra immediate request.
+   New installations have the same options in the initial setup form.
+
+The monitor polls third-party `https://codex-reset.com/api/timeline`, independently
+of quota/health polling. Multiple opted-in entries share **one monitor using the
+shortest configured interval** and a global event stream, not duplicate alerts per
+account. Adding, removing or updating an entry recalculates the shared timer without
+an extra immediate fetch just for a schedule change. Disabling monitoring on all
+entries cancels the timer and stops requests.
+
+The server sees your public IP and ordinary HTTP metadata, but receives **no OmniRoute
+API key, HA token, account ID or quota data**. Requests use a dedicated cookie-less
+session, not the authenticated gateway session or HA's shared cookie jar, with no
+Bearer/auth credentials or query parameters. Redirects and environment-derived
+proxy/netrc credentials are disabled.
+
+The `omniroute_codex_reset` event contains `phase`, `event_id`, `source_url`,
+`message`, `announced_at`, and `entry_id`. The entry ID is the lexicographically first
+currently opted-in gateway entry, **not** an affected OpenAI account.
+
+| Phase | Meaning |
+| --- | --- |
+| `announced` | A narrowly recognized reset announcement attributed to Tibo by the tracker. |
+| `declared_completed` | A live source says it propagated: a declaration, **not independent verification**. |
+| `tracker_verified` | A high-confidence, non-preview hard reset in the third-party verified archive. |
+
+Persistent notifications cover announcement and declared completion, with source
+links and explicit caveats. Archive verification is a bus event only. No phase proves
+your account received a reset; inspect the account-specific quota sensors separately.
+Banked credits, boosts, vague forecasts, conditional promises and denials are skipped.
+Unknown wording is deliberately ignored and may cause missed announcements after
+upstream changes. No deadline is inferred from “tomorrow 10am PST”.
+
+The first **successful fresh** response silently baselines historical events.
+Failures never establish a baseline. `.storage/omniroute.codex_reset` stores up to
+512 ID/phase pairs across reloads and restarts; a timestamp watermark prevents replay
+of evicted history. Retained IDs can progress to completion/verification. Older
+backfilled IDs, late arrivals behind the watermark, and transitions of evicted IDs
+are suppressed to prioritize avoiding historical alerts.
+
+Feeds older than one hour or over five minutes in the future, malformed responses,
+HTTP errors, and a 15-second timeout suppress alerts and log a warning without making
+gateway sensors unavailable. Responses are limited to 1 MiB. Delivery is **at most
+once**: state is persisted before publishing. A crash between persistence and delivery
+can lose an alert rather than replay it. Deleting storage resets the silent baseline.
+
+Copy [`examples/codex-reset-alerts.yaml`](examples/codex-reset-alerts.yaml) into your
+automations and replace its mobile notification service. This optional phone example
+does not operate physical devices. Disable persistent notifications if you want only
+phone alerts. Local tests do not replace testing in a live Home Assistant installation.
+
 ## Dashboard preview
 
 ![Codex 5-hour usage dashboard with anonymized accounts A and B](docs/images/codex-usage-example.png)
@@ -156,7 +240,7 @@ OmniRoute serves these readings from its provider-limit cache. Refreshing Home A
 
 ## API endpoints
 
-All requests are sent to your configured OmniRoute instance. Usage requests use the API key as a Bearer token.
+By default, requests are sent only to your configured OmniRoute instance. Usage requests use the API key as a Bearer token. Optional reset monitoring makes a separate external HTTPS request without this key.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -189,8 +273,12 @@ To remove the integration, delete its entry under **Settings → Devices & servi
 
 ## Security and privacy
 
+- **Use a dedicated OmniRoute key, not your main key.** Grant only the minimum permissions needed to read `/api/usage/quota`, `/api/system/version`, and `/api/usage/provider-limits` on your OmniRoute version. Permission names and endpoint authorization can vary between versions: verify them in your gateway rather than assuming a scope name. Do not grant inference, administration, or write access unless your gateway requires it and you understand the additional exposure.
+- A separate key makes revocation easier but **does not automatically restrict its permissions**. If your version cannot issue a sufficiently restricted key, consider that limitation before installing.
+- These quota and usage readings come from **your own OmniRoute API**, not from direct access to OpenAI/Codex. The integration's credential is an OmniRoute key.
 - Enter API keys directly in Home Assistant. Never include them in screenshots, issues, dashboard YAML, or public configuration examples.
 - Protect Home Assistant backups: configuration entries contain the API key.
+- If a key is exposed, revoke it in OmniRoute, create a replacement dedicated key, and update the integration through **Configure**. When removing the integration permanently, revoke its dedicated key as well.
 - Prefer HTTPS when requests cross an untrusted network; an HTTP connection does not encrypt the Bearer token.
 - Account names and quota metadata may be visible in entity names/attributes. Redact them when sharing screenshots or diagnostics.
 - The integration does not install updates or modify your OmniRoute accounts.
