@@ -99,6 +99,76 @@ The form validates the URL format; connection and authorization are checked duri
 
 Open the OmniRoute entry under **Settings → Devices & services** and choose **Configure** (Options). Enter the URL and key again, then save. The entry reloads with the new settings; you do not need to delete it.
 
+## Optional Codex reset alerts
+
+Added in integration **0.2.0** (source version; not a published release).
+
+### Configure alerts in Home Assistant
+
+1. Open **Settings → Devices & services → OmniRoute** and select your gateway entry.
+2. Choose **Configure** (Options).
+3. Confirm the gateway **URL** and re-enter its **API key**. The current Options form
+   requires the key again even when you only change reset-alert settings; it is not
+   prefilled. This key remains for gateway requests, never for the public tracker.
+4. Enable **Monitor external Codex reset tracker (opt-in)**. It is **off by default**.
+5. Set **Create persistent notifications for announcements and declared completion**:
+   enabled creates Home Assistant persistent notifications; disabled leaves bus events
+   available for your own automations. This boolean defaults to **enabled**.
+6. Set **Reset tracker polling interval (minutes, 1–60)** to a whole number from
+   **1 to 60**, inclusive. The default is **5 minutes**, including existing entries
+   without this setting. Booleans, fractional values and out-of-range values are rejected.
+7. Save. Gateway or opt-in changes reload the entry; interval/notification-only
+   changes update the active monitor without a reload or extra immediate request.
+   New installations have the same options in the initial setup form.
+
+The monitor polls third-party `https://codex-reset.com/api/timeline`, independently
+of quota/health polling. Multiple opted-in entries share **one monitor using the
+shortest configured interval** and a global event stream, not duplicate alerts per
+account. Adding, removing or updating an entry recalculates the shared timer without
+an extra immediate fetch just for a schedule change. Disabling monitoring on all
+entries cancels the timer and stops requests.
+
+The server sees your public IP and ordinary HTTP metadata, but receives **no OmniRoute
+API key, HA token, account ID or quota data**. Requests use a dedicated cookie-less
+session, not the authenticated gateway session or HA's shared cookie jar, with no
+Bearer/auth credentials or query parameters. Redirects and environment-derived
+proxy/netrc credentials are disabled.
+
+The `omniroute_codex_reset` event contains `phase`, `event_id`, `source_url`,
+`message`, `announced_at`, and `entry_id`. The entry ID is the lexicographically first
+currently opted-in gateway entry, **not** an affected OpenAI account.
+
+| Phase | Meaning |
+| --- | --- |
+| `announced` | A narrowly recognized reset announcement attributed to Tibo by the tracker. |
+| `declared_completed` | A live source says it propagated: a declaration, **not independent verification**. |
+| `tracker_verified` | A high-confidence, non-preview hard reset in the third-party verified archive. |
+
+Persistent notifications cover announcement and declared completion, with source
+links and explicit caveats. Archive verification is a bus event only. No phase proves
+your account received a reset; inspect the account-specific quota sensors separately.
+Banked credits, boosts, vague forecasts, conditional promises and denials are skipped.
+Unknown wording is deliberately ignored and may cause missed announcements after
+upstream changes. No deadline is inferred from “tomorrow 10am PST”.
+
+The first **successful fresh** response silently baselines historical events.
+Failures never establish a baseline. `.storage/omniroute.codex_reset` stores up to
+512 ID/phase pairs across reloads and restarts; a timestamp watermark prevents replay
+of evicted history. Retained IDs can progress to completion/verification. Older
+backfilled IDs, late arrivals behind the watermark, and transitions of evicted IDs
+are suppressed to prioritize avoiding historical alerts.
+
+Feeds older than one hour or over five minutes in the future, malformed responses,
+HTTP errors, and a 15-second timeout suppress alerts and log a warning without making
+gateway sensors unavailable. Responses are limited to 1 MiB. Delivery is **at most
+once**: state is persisted before publishing. A crash between persistence and delivery
+can lose an alert rather than replay it. Deleting storage resets the silent baseline.
+
+Copy [`examples/codex-reset-alerts.yaml`](examples/codex-reset-alerts.yaml) into your
+automations and replace its mobile notification service. This optional phone example
+does not operate physical devices. Disable persistent notifications if you want only
+phone alerts. Local tests do not replace testing in a live Home Assistant installation.
+
 ## Dashboard preview
 
 ![Codex 5-hour usage dashboard with anonymized accounts A and B](docs/images/codex-usage-example.png)
@@ -158,7 +228,7 @@ OmniRoute serves these readings from its provider-limit cache. Refreshing Home A
 
 ## API endpoints
 
-All requests are sent to your configured OmniRoute instance. Usage requests use the API key as a Bearer token.
+By default, requests are sent only to your configured OmniRoute instance. Usage requests use the API key as a Bearer token. Optional reset monitoring makes a separate external HTTPS request without this key.
 
 | Endpoint | Purpose |
 | --- | --- |
