@@ -8,6 +8,8 @@ Bring your OmniRoute gateway into Home Assistant: monitor availability, provider
 **UI configuration · HACS custom repository · Multiple accounts · Local polling**
 
 > This is a community-maintained custom integration, not an official Home Assistant or OmniRoute integration. It monitors your gateway; it does not install OmniRoute, run AI requests, or install gateway updates.
+>
+> This project is not endorsed or independently audited by the OmniRoute maintainers. Repository availability, a community discussion, and passing tests are not a security review or a guarantee of compatibility.
 
 ## What you get
 
@@ -28,7 +30,7 @@ Accounts are identified by their connection ID, so multiple accounts from the sa
 
 - A running Home Assistant installation with access to its configuration directory if installing manually.
 - A running OmniRoute instance reachable **from Home Assistant**, not just from your browser.
-- An OmniRoute API key permitted to read the usage endpoints. A key that works for inference may still return **403** for usage monitoring.
+- An **OmniRoute API key**, not an OpenAI/Codex key or a Home Assistant token. Create a **dedicated key for this integration** with the narrowest permissions that cover the endpoints listed below; do not use your main gateway key. A key that works for inference may still return **403** for usage monitoring.
 - [HACS](https://www.hacs.xyz/docs/use/download/download/) for the HACS installation method; manual installation does not require HACS.
 
 The integration has been exercised against OmniRoute **3.8.51**. Endpoint availability and response formats may differ in other versions. A minimum Home Assistant version has not yet been established by a compatibility matrix; use an up-to-date Home Assistant Core.
@@ -189,8 +191,12 @@ To remove the integration, delete its entry under **Settings → Devices & servi
 
 ## Security and privacy
 
+- **Use a dedicated OmniRoute key, not your main key.** Grant only the minimum permissions needed to read `/api/usage/quota`, `/api/system/version`, and `/api/usage/provider-limits` on your OmniRoute version. Permission names and endpoint authorization can vary between versions: verify them in your gateway rather than assuming a scope name. Do not grant inference, administration, or write access unless your gateway requires it and you understand the additional exposure.
+- A separate key makes revocation easier but **does not automatically restrict its permissions**. If your version cannot issue a sufficiently restricted key, consider that limitation before installing.
+- These quota and usage readings come from **your own OmniRoute API**, not from direct access to OpenAI/Codex. The integration's credential is an OmniRoute key.
 - Enter API keys directly in Home Assistant. Never include them in screenshots, issues, dashboard YAML, or public configuration examples.
 - Protect Home Assistant backups: configuration entries contain the API key.
+- If a key is exposed, revoke it in OmniRoute, create a replacement dedicated key, and update the integration through **Configure**. When removing the integration permanently, revoke its dedicated key as well.
 - Prefer HTTPS when requests cross an untrusted network; an HTTP connection does not encrypt the Bearer token.
 - Account names and quota metadata may be visible in entity names/attributes. Redact them when sharing screenshots or diagnostics.
 - The integration does not install updates or modify your OmniRoute accounts.
