@@ -1,6 +1,18 @@
 # OmniRoute for Home Assistant
 
-Bring your OmniRoute gateway into Home Assistant: monitor availability, provider-account quotas, installed version, and **Codex usage in the 5-hour window** — all from your dashboard.
+**Source version: 0.2.0** — includes optional Codex reset announcement/completion alerts with configurable polling. This feature is currently on the feature branch/PR, not yet merged into `main` or published as a HACS release.
+
+Bring your OmniRoute gateway into Home Assistant: monitor availability, provider-account quotas, installed version, and **Codex usage in the 5-hour window** — all from your dashboard. Optionally receive **Codex reset announcements and declared-completion alerts** from a public third-party tracker.
+
+### What's new in 0.2.0
+
+- Opt-in reset monitoring with separate announcement, declared-completion and tracker-verification events.
+- Home Assistant persistent notifications and an [automation example](examples/codex-reset-alerts.yaml) for phone alerts.
+- Configurable polling: **1–60 minutes**, default **5**; one shared monitor uses the shortest enabled interval.
+- Persistent deduplication and a silent initial baseline: no historical notification flood.
+- No OmniRoute credentials sent to the tracker. Global reset reports do not prove a reset reached your account.
+
+See [configuration instructions](#optional-codex-reset-alerts).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Custom integration](https://img.shields.io/badge/Home%20Assistant-Custom%20integration-41BDF5.svg)](https://www.home-assistant.io/)
